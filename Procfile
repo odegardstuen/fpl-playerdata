@@ -1,1 +1,1 @@
-web: bokeh serve --port $PORT --host fpl-playerdata.herokuapp.com --address=0.0.0.0 --use-xheaders players.py
+web: bokeh serve --port $PORT --address=0.0.0.0 --use-xheaders players.py
