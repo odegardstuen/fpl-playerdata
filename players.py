@@ -10,7 +10,7 @@ import requests
 import pandas as pd
 import copy
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models.widgets import Select,TextInput
+from bokeh.models.widgets import Slider, Select,TextInput
 from bokeh.layouts import layout, widgetbox
 from bokeh.models import HoverTool, PanTool,BoxZoomTool,ResetTool
 from bokeh.palettes import brewer, viridis
@@ -72,6 +72,7 @@ axis_map = {
 }
 
 
+
 color_map = copy.deepcopy(axis_map)
 #color_map['Club'] = 'team_name'
 color_map['Position'] = 'position'
@@ -93,30 +94,67 @@ for i in range(N):
     allplayers['position'][i] = positions[allplayers['element_type'][i]-1]
 
 teams = [None] * 20
+teamind = {}
+teamstrength = []
 for i in range(len(teams)):
     teams[i] = fpl_data['teams'][i]['name']
+    teamstrength.append(fpl_data['teams'][i]['strength'])
+    teamind[teams[i]] = i
 del allplayers['team']
 
 data = pd.DataFrame.from_dict(allplayers)
 data['now_cost'] = data['now_cost']/10
 seqcolors = viridis(256)
 
-
-
 positions.insert(0,"All")
 teams.insert(0,"All")
+
+
+# Create fixturetable placeholder
+#fixturecolorcodes = ['#0b8a00','#7ad344','#feffd5','#ffa32a',' #cc2805']
+#fixturecolors = [[] for _ in range(20)]                     
+                     
+fixturedata = requests.get('https://fantasy.premierleague.com/drf/fixtures/').json()
+fixturetable = [[] for _ in range(20)]
+
+for fixture in fixturedata:
+    fixturetable[fixture['team_h']-1].append(fixture['team_h_difficulty'])
+    fixturetable[fixture['team_a']-1].append(fixture['team_a_difficulty'])
+#    fixturecolors[fixture['team_h']-1].append(fixturecolorcodes[fixturetable[fixture['team_h']-1][-1]-1])
+#    fixturecolors[fixture['team_a']-1].append(fixturecolorcodes[fixturetable[fixture['team_a']-1][-1]-1])
+
+currentGW = fpl_data['current-event']
+nextfixtures = [[] for _ in range(len(data))]
+#nextfixturecolors = [[] for _ in range(len(data))]
+nextfixturesstrings = []
+for playeriloc in range(len(nextfixtures)):
+    nextfixtures[playeriloc] = fixturetable[teamind[data['team_name'].iloc[playeriloc]]][currentGW:currentGW+6]
+#    nextfixturecolors[playeriloc] = fixturecolors[teamind[data['team_name'].iloc[playeriloc]]][currentGW:currentGW+6]
+#    
+    newstring = '['
+    for rating in nextfixtures[playeriloc]:
+        newstring = newstring + str(rating) + ', '
+    newstring = newstring[:-2]+ ']' 
+    nextfixturesstrings.append(newstring)
+
+data['fixtures'] = nextfixturesstrings
+
+
  
 # Create Input controls
 positionSelect = Select(title="Position", value="All", options = positions)
 clubSelect = Select(title="Club", value="All", options=teams)
 playerName = TextInput(title="Player name contains:")
+maxCost = Slider(title = "Max cost", start = 4.0, end=13.5, value= 13.5, step=0.1)
 x_axis = Select(title="X Axis", options=sorted(axis_map.keys()), value="Cost")
 y_axis = Select(title="Y Axis", options=sorted(axis_map.keys()), value="Value-season")
 markersize = Select(title="Marker Size", options=sorted(axis_map.keys()), value="Points")
 markercolor = Select(title="Marker Colour", options=sorted(color_map.keys()), value="Position")
 
 # Create Column Data Source that will be used by the plot
-source = ColumnDataSource(data=dict(x=[], y=[], size=[], points=[], cost=[], web_name=[], position=[], team_name=[], color=[]))
+source = ColumnDataSource(data=dict(x=[], y=[], size=[], points=[], cost=[],
+                                    web_name=[], position=[], team_name=[], color=[],
+                                    fixtures = []))
 
 
 hover = HoverTool()
@@ -126,6 +164,8 @@ hover.tooltips = [
     ('position', '@position'),
     ('points', '@points'),
     ('cost', '@cost'),
+    ('fixtures', '@fixtures')
+#    ('matches', '$color[hex=False,swatch]:M1C)',
 ]
 
 # Need to specify starting ranges to avoid auto-range 
@@ -164,14 +204,16 @@ def select_players():
     club_val = clubSelect.value
     position_val = positionSelect.value
     player_val = playerName.value
-    selected = data
+    selected = data[
+            data.now_cost <= maxCost.value
+            ]
     if (club_val != "All"):
         selected = selected[selected.team_name.str.contains(clubSelect.value)==True]
     if (position_val != "All"):
         selected = selected[selected.position.str.contains(position_val)==True]
     if (player_val != ""):
         selected = selected[selected.web_name.str.contains(player_val)==True]
-    
+
     selected = selected[selected.total_points > 0]
     
     return selected
@@ -206,14 +248,14 @@ def update():
         web_name = df['web_name'],
         position = df['position'],
         team_name = df['team_name'],
-        color = pd.Series(colormaker(df[color_name]))
-#        color = df['colors']
+        color = pd.Series(colormaker(df[color_name])),
+        fixtures = df['fixtures']
         )
 
 update()  # initial load of the data
 
 
-controls = [positionSelect, clubSelect, playerName, x_axis, y_axis, markersize, markercolor]
+controls = [positionSelect, clubSelect, playerName, maxCost, x_axis, y_axis, markersize, markercolor]
 for control in controls:
     control.on_change('value', lambda attr, old, new: update())
 
@@ -226,7 +268,7 @@ l = layout([
 
 
 curdoc().add_root(l)
-curdoc().title = "Players"
+curdoc().title = "Playerdata"
 
 
 
