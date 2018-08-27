@@ -10,11 +10,12 @@ import requests
 import pandas as pd
 import copy
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models.widgets import Slider, Select,TextInput
+from bokeh.models.widgets import Slider, Select,TextInput, DataTable, TableColumn
 from bokeh.layouts import layout, widgetbox
-from bokeh.models import HoverTool, PanTool,BoxZoomTool,ResetTool
+from bokeh.models import HoverTool, PanTool, BoxZoomTool, ResetTool, TapTool
 from bokeh.palettes import brewer, viridis
 from bokeh.io import curdoc
+
 
 fpl_data = requests.get('https://fantasy.premierleague.com/drf/bootstrap-static').json()
 N = len(fpl_data['elements'])
@@ -177,8 +178,20 @@ xmax = max(data['now_cost'])+padding*xrange
 ymin = max([0,min(data['value_season'])-padding*yrange])
 ymax = max(data['value_season'])+padding*yrange
 
-p = figure(plot_height=600, plot_width=700, title="", x_range = (xmin, xmax), y_range = (ymin, ymax), tools = [hover,BoxZoomTool(), PanTool(),ResetTool()], output_backend='webgl')
+p = figure(plot_height=600, plot_width=700, title="", x_range = (xmin, xmax), y_range = (ymin, ymax), tools = [hover,BoxZoomTool(), PanTool(),ResetTool(),TapTool()], output_backend='webgl')
 p.scatter(x="x", y="y",fill_alpha=0.45, source=source, size = 'size', color = 'color')
+
+
+
+# Selected player table
+tablesource = ColumnDataSource(data=dict(Field=[], Value=[]))
+columns = [
+        TableColumn(field='Field', title='Field'),
+        TableColumn(field='Value', title='Value'),
+        ]
+data_table = DataTable(source=tablesource, columns=columns, width=300, height=280)
+
+
 
 def colormaker(series):
     
@@ -252,8 +265,14 @@ def update():
         fixtures = df['fixtures']
         )
 
-update()  # initial load of the data
 
+#def updatetable():
+    
+
+
+
+
+update()  # initial load of the data
 
 controls = [positionSelect, clubSelect, playerName, maxCost, x_axis, y_axis, markersize, markercolor]
 for control in controls:
