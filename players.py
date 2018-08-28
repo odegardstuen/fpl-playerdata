@@ -164,7 +164,7 @@ hover.tooltips = [
     ('team', '@team_name'),
     ('position', '@position'),
     ('points', '@points'),
-    ('cost', '@cost'),
+    ('cost', '@cost{0.0 a}'),
     ('fixtures', '@fixtures')
 #    ('matches', '$color[hex=False,swatch]:M1C)',
 ]
