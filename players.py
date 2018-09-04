@@ -10,7 +10,7 @@ import requests
 import pandas as pd
 import copy
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models.widgets import Slider, Select,TextInput, DataTable, TableColumn
+from bokeh.models.widgets import Slider, Select,TextInput, DataTable, TableColumn, NumberFormatter
 from bokeh.layouts import layout, widgetbox
 from bokeh.models import HoverTool, PanTool, BoxZoomTool, ResetTool, TapTool
 from bokeh.palettes import brewer, viridis
@@ -50,8 +50,8 @@ allplayers['influence'] = [None] * N
 axis_map = {
     "Cost": "now_cost",
 #    "Points per million GBP": "pointspercost",
-    "Minutes played": "minutes",
-#    "Points per 90 min": "pointsper90",
+    "Playtime": "playtime",
+    "Points per 90 min": "pointsper90",
     "Bonus points": "bonus",
     "Points": "total_points",
     "Bonus point system": "bps",
@@ -105,6 +105,9 @@ del allplayers['team']
 
 data = pd.DataFrame.from_dict(allplayers)
 data['now_cost'] = data['now_cost']/10
+data['pointsper90'] = data['total_points']/data['minutes']*90
+data['playtime'] = data['minutes']/90
+
 seqcolors = viridis(256)
 
 positions.insert(0,"All")
@@ -114,6 +117,8 @@ teams.insert(0,"All")
 # Create fixturetable placeholder
 #fixturecolorcodes = ['#0b8a00','#7ad344','#feffd5','#ffa32a',' #cc2805']
 #fixturecolors = [[] for _ in range(20)]                     
+
+playersummary = requests.get('https://fantasy.premierleague.com/drf/element-summary/115').json()
                      
 fixturedata = requests.get('https://fantasy.premierleague.com/drf/fixtures/').json()
 fixturetable = [[] for _ in range(20)]
@@ -155,7 +160,7 @@ markercolor = Select(title="Marker Colour", options=sorted(color_map.keys()), va
 # Create Column Data Source that will be used by the plot
 source = ColumnDataSource(data=dict(x=[], y=[], size=[], points=[], cost=[],
                                     web_name=[], position=[], team_name=[], color=[],
-                                    fixtures = []))
+                                    fixtures = [], ID = []))
 
 
 hover = HoverTool()
@@ -183,13 +188,38 @@ p.scatter(x="x", y="y",fill_alpha=0.45, source=source, size = 'size', color = 'c
 
 
 
-# Selected player table
-tablesource = ColumnDataSource(data=dict(Field=[], Value=[]))
+# Table for selected players
+tablesource = ColumnDataSource(data = dict(position=[], web_name=[], team_name=[], event_points=[],
+                                                total_points=[],  form=[],  now_cost=[], value_season=[],
+                                                value_form=[], playtime=[], pointsper90=[], assists=[],
+                                                goals_scored=[],ict_index=[], threat=[], creativity=[], influence=[],
+                                                selected_by_percent=[]))
+
+basicformat = NumberFormatter(format = '0.0', text_align = 'right')
+
+
 columns = [
-        TableColumn(field='Field', title='Field'),
-        TableColumn(field='Value', title='Value'),
-        ]
-data_table = DataTable(source=tablesource, columns=columns, width=300, height=280)
+    TableColumn(field='position', title='Position'),
+    TableColumn(field='web_name', title='Name'),
+    TableColumn(field='team_name', title='Club'),
+    TableColumn(field='event_points', title='GW points', formatter = basicformat),
+    TableColumn(field='total_points', title='Points', formatter = basicformat),
+    TableColumn(field='form', title='Form', formatter = basicformat),
+    TableColumn(field='now_cost', title='Cost', formatter = basicformat),
+    TableColumn(field='value_season', title='Season value', formatter = basicformat),
+    TableColumn(field='value_form', title='Form value', formatter = basicformat),
+    TableColumn(field='playtime', title='Full 90min', formatter = basicformat),
+    TableColumn(field='pointsper90', title='Points/90min', formatter = basicformat),
+    TableColumn(field='assists', title='Assists', formatter = basicformat),
+    TableColumn(field='goals_scored', title='Goals', formatter = basicformat),
+    TableColumn(field='ict_index', title='ICT', formatter = basicformat),
+    TableColumn(field='threat', title='Threat'),
+    TableColumn(field='creativity', title='Creativity', formatter = basicformat),
+    TableColumn(field='influence', title='Influence', formatter = basicformat),
+    TableColumn(field='selected_by_percent', title='Ownership', formatter = basicformat),
+    ]
+
+selecttable = DataTable(source=tablesource, columns=columns, width=1000, height=400, index_position = None)
 
 
 
@@ -259,17 +289,35 @@ def update():
         points = df['total_points'],
         cost = df['now_cost'],
         web_name = df['web_name'],
+        ID = df['id'],
         position = df['position'],
         team_name = df['team_name'],
         color = pd.Series(colormaker(df[color_name])),
-        fixtures = df['fixtures']
+        fixtures = df['fixtures'],
+#        selecteddf = df
         )
 
 
-#def updatetable():
-    
+def selectupdate(attrname, old, new):
 
-
+    if len(source.selected.indices)>0:
+        
+        selectionIndex = source.selected.indices
+        
+        selectedplayers = []
+        for ind in selectionIndex:
+            selectedplayers.append(source.data['ID'].iloc[ind])
+            
+        newtable = {}
+        for key in tablesource.data.keys():
+            values = []
+            for player in selectedplayers:
+                values.append(data[key][data['id'] == player].iloc[0])        
+            newtable[key] = values
+            
+        tablesource.data = newtable
+        
+        
 
 
 update()  # initial load of the data
@@ -277,12 +325,13 @@ update()  # initial load of the data
 controls = [positionSelect, clubSelect, playerName, maxCost, x_axis, y_axis, markersize, markercolor]
 for control in controls:
     control.on_change('value', lambda attr, old, new: update())
+source.on_change('selected', selectupdate)
 
 sizing_mode = 'fixed'  # 'scale_width' also looks nice with this example
 
 inputs = widgetbox(*controls, sizing_mode=sizing_mode)
 l = layout([
-    [inputs, p],
+    [inputs, p],selecttable
 ], sizing_mode=sizing_mode)
 
 
